@@ -17,7 +17,8 @@ def run_solar_agent():
     
     try:
         data = requests.get(url).json()
-        target_hour = (datetime.now().hour + 2) % 24
+        india_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        target_hour = (india_time.hour + 1) % 24
         total_rad = data['hourly']['direct_radiation'][target_hour] + data['hourly']['diffuse_radiation'][target_hour]
         prediction = (total_rad / 1000) * CAPACITY_KW * 0.75
         
