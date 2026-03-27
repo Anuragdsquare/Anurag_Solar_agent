@@ -45,6 +45,8 @@ def run_solar_agent():
         else:
             predicted_ac_kw = 0.0
             
+                status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
+        
         report = (
             f"☀️ Anurag pls check, SOLAR SCHEDULING REPORT\n"
             f"📍 Sahasradhara energy pvt ltd\n"
@@ -52,7 +54,7 @@ def run_solar_agent():
             f"📊 GHI: {ghi} W/m² | 🌡️ Temp: {temp_air}°C\n"
             f"🔋 Predicted AC: {round(predicted_ac_kw, 2)} kW\n"
             f"---------------------------\n"
-            f"{'✅ GOOD GEN: Proceed' if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else '⚠️ LOW GEN}"
+            f"{status}"
         )
         
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
