@@ -1,5 +1,7 @@
 import requests
 from datetime import datetime, timedelta
+import csv
+import os
 
 # --- CONFIG ---
 DC_CAPACITY_KW = 5000  
@@ -11,7 +13,7 @@ CHAT_ID = "8545116146"
 
 # --- SYSTEM CONSTANTS ---
 TEMP_COEFF = -0.004  
-BASE_SYSTEM_LOSSES = 0.85 
+BASE_SYSTEM_LOSSES = 0.68  
 INVERTER_EFFICIENCY = 0.982 
 
 def run_solar_agent():
@@ -57,10 +59,26 @@ def run_solar_agent():
             f"{status}"
         )
         
+        # 1. Telegram पर नॉर्मल मैसेज भेजना
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {'chat_id': CHAT_ID, 'text': report}
         requests.get(send_url, params=payload, timeout=10)
         
+        # 2. CSV फाइल में डेटा सेव करना
+        file_exists = os.path.isfile('hourly_generation.csv')
+        with open('hourly_generation.csv', mode='a', newline='') as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(['Date_Time', 'GHI', 'Temp_C', 'Predicted_AC_kW'])
+            writer.writerow([target_time_str, ghi, temp_air, round(predicted_ac_kw, 2)])
+            
+        # 3. शाम 7 बजे (19:00 IST) Telegram पर CSV डॉक्यूमेंट भेजना
+        if india_now.hour == 19:
+            with open('hourly_generation.csv', 'rb') as doc:
+                doc_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+                requests.post(doc_url, data={'chat_id': CHAT_ID}, files={'document': doc}, timeout=20)
+            print("CSV file sent to Telegram!")
+            
         print(f"Success! Predicted {round(predicted_ac_kw, 2)} kW for {target_time_str}")
 
     except Exception as e:
@@ -68,4 +86,3 @@ def run_solar_agent():
 
 if __name__ == "__main__":
     run_solar_agent()
-    
