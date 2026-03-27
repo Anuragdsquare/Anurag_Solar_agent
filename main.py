@@ -2,45 +2,64 @@ import requests
 from datetime import datetime, timedelta
 
 # --- CONFIG ---
-CAPACITY_KW = 5000 
-LAT = 27.13 # sahasradhara energy pvt ltd
-LON = 79.27
+DC_CAPACITY_KW = 5000  
+TOTAL_INVERTER_MAX_KW = 6000  # 5 x 1200 kW ABB PVS800
+LAT = 27.131399 
+LON = 79.276257
 BOT_TOKEN = "8732527484:AAFxJVX2aFXsCMpyI2PJwTb74g2t0AnCABA"
 CHAT_ID = "8545116146"
 
+# --- SYSTEM CONSTANTS ---
+TEMP_COEFF = -0.004  
+BASE_SYSTEM_LOSSES = 0.85 
+INVERTER_EFFICIENCY = 0.982 
+
 def run_solar_agent():
     try:
-        # 1. Get India Time (UTC + 5:30)
         india_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
         target_time = india_now + timedelta(hours=2)
-        target_hour = target_time.hour
+        target_time_str = target_time.strftime("%Y-%m-%dT%H:00")
         
-        # 2. Get Data
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&hourly=direct_radiation,diffuse_radiation&timezone=Asia%2FKolkata&forecast_days=2"
-        data = requests.get(url, timeout=15).json()
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={LAT}&longitude={LON}&"
+            f"hourly=shortwave_radiation,temperature_2m&"
+            f"timezone=Asia%2FKolkata&forecast_days=2"
+        )
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
         
-        # 3. Calculate index (handles midnight rollover properly)
-        # Using target_time logic to ensure we get the right hour index in the 48-hour list
-        index = india_now.hour + 2
+        index = data['hourly']['time'].index(target_time_str)
+        ghi = data['hourly']['shortwave_radiation'][index] 
+        temp_air = data['hourly']['temperature_2m'][index]
         
-        total_rad = data['hourly']['direct_radiation'][index] + data['hourly']['diffuse_radiation'][index]
-        prediction = (total_rad / 1000) * CAPACITY_KW * 0.75
-        
-        # 4. Construct Report
+        if ghi > 0:
+            temp_cell = temp_air + (ghi / 40)
+            temp_loss_factor = 1 + (TEMP_COEFF * (temp_cell - 25))
+            temp_loss_factor = min(1.0, max(0.0, temp_loss_factor)) 
+            
+            dc_power = (ghi / 1000) * DC_CAPACITY_KW * BASE_SYSTEM_LOSSES * temp_loss_factor
+            ac_power_raw = dc_power * INVERTER_EFFICIENCY
+            predicted_ac_kw = min(ac_power_raw, TOTAL_INVERTER_MAX_KW)
+        else:
+            predicted_ac_kw = 0.0
+            
         report = (
             f"☀️ Anurag pls check, SOLAR SCHEDULING REPORT\n"
             f"📍 Sahasradhara energy pvt ltd\n"
-            f"⏰ Forecast for: {target_hour}:00 IST\n"
-            f"📊 Rad: {total_rad} W/m²\n"
-            f"🔋 Predicted: {round(prediction, 2)} kW\n"
+            f"⏰ Forecast for: {target_time.strftime('%H:00')} IST\n"
+            f"📊 GHI: {ghi} W/m² | 🌡️ Temp: {temp_air}°C\n"
+            f"🔋 Predicted AC: {round(predicted_ac_kw, 2)} kW\n"
             f"---------------------------\n"
-            f"{'✅ GOOD GEN: Proceed' if total_rad > 150 else '⚠️ LOW GEN: Delay load'}"
+            f"{'✅ GOOD GEN: Proceed' if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else '⚠️ LOW GEN}"
         )
         
-        # 5. Send to Telegram
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={report}"
-        requests.get(send_url, timeout=10)
-        print("Success")
+        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {'chat_id': CHAT_ID, 'text': report}
+        requests.get(send_url, params=payload, timeout=10)
+        
+        print(f"Success! Predicted {round(predicted_ac_kw, 2)} kW for {target_time_str}")
 
     except Exception as e:
         print(f"Error: {e}")
