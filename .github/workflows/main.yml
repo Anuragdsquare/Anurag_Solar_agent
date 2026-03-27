@@ -1,21 +1,25 @@
 name: Anurag's Hourly Solar Agent
+
 on:
   schedule:
-    - cron: '0 * * * *' # Runs at the start of every hour
-  workflow_dispatch: # Allows you to run it manually to test
+    - cron: '0 * * * *' # हर घंटे रन करने के लिए
+  workflow_dispatch: # मैन्युअल रन बटन के लिए
 
 jobs:
-  run-agent:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Repo
         uses: actions/checkout@v4
-      - name: Set up Python
+        
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-      - name: Install requests
+          python-version: '3.10'
+          
+      - name: Install Dependencies
         run: pip install requests
-      - name: Run the script
-        run: python main.py
+        
+      - name: Run Script
+        run: python main.py # यहाँ अपनी Python फ़ाइल का सही नाम लिखें
         
