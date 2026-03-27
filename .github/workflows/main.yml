@@ -2,24 +2,35 @@ name: Anurag's Hourly Solar Agent
 
 on:
   schedule:
-    - cron: '0 * * * *' # हर घंटे रन करने के लिए
-  workflow_dispatch: # मैन्युअल रन बटन के लिए
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write # यह लाइन फाइल को सेव करने के लिए जरूरी है
 
 jobs:
-  run-bot:
+  run-agent:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
+      - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           
-      - name: Install Dependencies
+      - name: Install requests
         run: pip install requests
         
-      - name: Run Script
-        run: python main.py # यहाँ अपनी Python फ़ाइल का सही नाम लिखें
+      - name: Run the script
+        run: python main.py
         
+      - name: Save CSV back to GitHub
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add hourly_generation.csv
+          git diff --quiet && git diff --staged --quiet || git commit -m "Updated CSV"
+          git push
+          
