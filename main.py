@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIG ---
 DC_CAPACITY_KW = 5000  
-TOTAL_INVERTER_MAX_KW = 6000  # 5 x 1200 kW ABB PVS800
+TOTAL_INVERTER_MAX_KW = 6000  
 LAT = 27.131399 
 LON = 79.276257
 BOT_TOKEN = "8732527484:AAFxJVX2aFXsCMpyI2PJwTb74g2t0AnCABA"
@@ -45,7 +45,7 @@ def run_solar_agent():
         else:
             predicted_ac_kw = 0.0
             
-                status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
+        status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
         
         report = (
             f"☀️ Anurag pls check, SOLAR SCHEDULING REPORT\n"
@@ -68,3 +68,4 @@ def run_solar_agent():
 
 if __name__ == "__main__":
     run_solar_agent()
+    
