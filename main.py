@@ -5,7 +5,7 @@ import os
 
 # --- CONFIG ---
 DC_CAPACITY_KW = 5000  
-TOTAL_INVERTER_MAX_KW = 6000  
+TOTAL_INVERTER_MAX_KW = 4800  # 1 Inverter offline (4 x 1200 kW)
 LAT = 27.131399 
 LON = 79.276257
 BOT_TOKEN = "8732527484:AAFxJVX2aFXsCMpyI2PJwTb74g2t0AnCABA"
@@ -20,8 +20,15 @@ def run_solar_agent():
     try:
         india_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
         target_time = india_now + timedelta(hours=2)
+        target_hour = target_time.hour
         target_time_str = target_time.strftime("%Y-%m-%dT%H:00")
+        today_str = target_time.strftime("%Y-%m-%d")
         
+        # रात के वक्त रिपोर्ट भेजना बंद करें (सिर्फ 7 AM से 6 PM तक चलेगा)
+        if target_hour < 7 or target_hour > 18:
+            print(f"Night time ({target_hour}:00 IST). No solar generation. Exiting.")
+            return
+            
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={LAT}&longitude={LON}&"
@@ -47,6 +54,21 @@ def run_solar_agent():
         else:
             predicted_ac_kw = 0.0
             
+        predicted_ac_kw = round(predicted_ac_kw, 2)
+        
+        # --- आज का अब तक का टोटल कैलकुलेट करना ---
+        running_total = 0.0
+        if os.path.isfile('hourly_generation.csv'):
+            with open('hourly_generation.csv', mode='r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # सिर्फ आज की डेट का डेटा जोड़ें
+                    if row['Date_Time'].startswith(today_str):
+                        running_total += float(row['Predicted_AC_kW'])
+                        
+        # इस घंटे का प्रेडिक्शन भी टोटल में जोड़ दें
+        running_total += predicted_ac_kw
+            
         status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
         
         report = (
@@ -54,12 +76,13 @@ def run_solar_agent():
             f"📍 Sahasradhara energy pvt ltd\n"
             f"⏰ Forecast for: {target_time.strftime('%H:00')} IST\n"
             f"📊 GHI: {ghi} W/m² | 🌡️ Temp: {temp_air}°C\n"
-            f"🔋 Predicted AC: {round(predicted_ac_kw, 2)} kW\n"
+            f"🔋 Predicted AC: {predicted_ac_kw} kW\n"
+            f"📈 Today's Total: {round(running_total, 2)} kWh\n"
             f"---------------------------\n"
             f"{status}"
         )
         
-        # 1. Telegram पर नॉर्मल मैसेज भेजना
+        # 1. Telegram पर हर घंटे की रिपोर्ट भेजना (टोटल के साथ)
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {'chat_id': CHAT_ID, 'text': report}
         requests.get(send_url, params=payload, timeout=10)
@@ -70,16 +93,24 @@ def run_solar_agent():
             writer = csv.writer(file)
             if not file_exists:
                 writer.writerow(['Date_Time', 'GHI', 'Temp_C', 'Predicted_AC_kW'])
-            writer.writerow([target_time_str, ghi, temp_air, round(predicted_ac_kw, 2)])
+            writer.writerow([target_time_str, ghi, temp_air, predicted_ac_kw])
             
-        # 3. शाम 7 बजे (19:00 IST) Telegram पर CSV डॉक्यूमेंट भेजना
-        if india_now.hour == 19:
+        # 3. शाम 6 बजे (18:00 IST) फाइनल समरी और CSV डॉक्यूमेंट भेजना
+        if target_hour == 18:
+            summary_msg = (
+                f"🌅 *END OF DAY SUMMARY*\n"
+                f"📅 Date: {today_str}\n"
+                f"⚡ Total Final Generation: {round(running_total, 2)} kWh\n"
+                f"---------------------------"
+            )
+            requests.get(send_url, params={'chat_id': CHAT_ID, 'text': summary_msg}, timeout=10)
+            
             with open('hourly_generation.csv', 'rb') as doc:
                 doc_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
                 requests.post(doc_url, data={'chat_id': CHAT_ID}, files={'document': doc}, timeout=20)
-            print("CSV file sent to Telegram!")
+            print("Daily summary and CSV file sent to Telegram!")
             
-        print(f"Success! Predicted {round(predicted_ac_kw, 2)} kW for {target_time_str}")
+        print(f"Success! Predicted {predicted_ac_kw} kW. Running Total: {round(running_total, 2)} kWh")
 
     except Exception as e:
         print(f"Error: {e}")
