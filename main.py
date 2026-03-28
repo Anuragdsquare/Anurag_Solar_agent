@@ -13,7 +13,7 @@ CHAT_ID = "8545116146"
 
 # --- SYSTEM CONSTANTS ---
 TEMP_COEFF = -0.004  
-BASE_SYSTEM_LOSSES = 0.68  
+BASE_SYSTEM_LOSSES = 0.78  # SCADA PR के अनुसार कैलिब्रेटेड
 INVERTER_EFFICIENCY = 0.982 
 
 def run_solar_agent():
@@ -24,7 +24,6 @@ def run_solar_agent():
         target_time_str = target_time.strftime("%Y-%m-%dT%H:00")
         today_str = target_time.strftime("%Y-%m-%d")
         
-        # रात के वक्त रिपोर्ट भेजना बंद करें (सिर्फ 7 AM से 6 PM तक चलेगा)
         if target_hour < 7 or target_hour > 18:
             print(f"Night time ({target_hour}:00 IST). No solar generation. Exiting.")
             return
@@ -56,17 +55,14 @@ def run_solar_agent():
             
         predicted_ac_kw = round(predicted_ac_kw, 2)
         
-        # --- आज का अब तक का टोटल कैलकुलेट करना ---
         running_total = 0.0
         if os.path.isfile('hourly_generation.csv'):
             with open('hourly_generation.csv', mode='r') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    # सिर्फ आज की डेट का डेटा जोड़ें
                     if row['Date_Time'].startswith(today_str):
                         running_total += float(row['Predicted_AC_kW'])
                         
-        # इस घंटे का प्रेडिक्शन भी टोटल में जोड़ दें
         running_total += predicted_ac_kw
             
         status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
@@ -82,12 +78,10 @@ def run_solar_agent():
             f"{status}"
         )
         
-        # 1. Telegram पर हर घंटे की रिपोर्ट भेजना (टोटल के साथ)
         send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {'chat_id': CHAT_ID, 'text': report}
         requests.get(send_url, params=payload, timeout=10)
         
-        # 2. CSV फाइल में डेटा सेव करना
         file_exists = os.path.isfile('hourly_generation.csv')
         with open('hourly_generation.csv', mode='a', newline='') as file:
             writer = csv.writer(file)
@@ -95,7 +89,6 @@ def run_solar_agent():
                 writer.writerow(['Date_Time', 'GHI', 'Temp_C', 'Predicted_AC_kW'])
             writer.writerow([target_time_str, ghi, temp_air, predicted_ac_kw])
             
-        # 3. शाम 6 बजे (18:00 IST) फाइनल समरी और CSV डॉक्यूमेंट भेजना
         if target_hour == 18:
             summary_msg = (
                 f"🌅 *END OF DAY SUMMARY*\n"
@@ -117,3 +110,4 @@ def run_solar_agent():
 
 if __name__ == "__main__":
     run_solar_agent()
+        
