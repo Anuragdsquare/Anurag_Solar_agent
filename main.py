@@ -66,7 +66,7 @@ def run_solar_agent():
         running_total = round(running_total + kw_now, 2)
 
         report = (
-            f"📊 *SOLAR LIVE REPORT - {india_now.strftime('%H:%00')}*\n"
+            f"📊 *SOLAR LIVE REPORT - {india_now.strftime('%H:00')}*\n"
             f"📍 Sahasradhara energy pvt ltd\n\n"
             f"🔴 *CURRENT STATUS (NOW):*\n"
             f"✨ Power: {kw_now} kW\n"
