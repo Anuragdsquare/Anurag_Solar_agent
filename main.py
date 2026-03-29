@@ -15,7 +15,7 @@ CHAT_ID = "8545116146"
 TEMP_COEFF = -0.004  
 BASE_SYSTEM_LOSSES = 0.70  
 INVERTER_EFFICIENCY = 0.982 
-TILT = 45
+TILT = 20
 AZIMUTH = 180 
 
 def get_solar_data(target_time):
