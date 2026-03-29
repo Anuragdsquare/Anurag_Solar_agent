@@ -1,8 +1,8 @@
-name: Anurag's Hourly Solar Agent
+name: Hourly Solar Agent
 
 on:
   schedule:
-    # 2:30 UTC to 11:30 UTC equals 8:00 AM IST to 5:00 PM IST
+    # 2:30 UTC se 11:30 UTC (8:00 AM IST se 5:00 PM IST tak)
     - cron: '30 2-11 * * *'
   workflow_dispatch:
 
@@ -18,17 +18,9 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install requests
+      - name: Install dependencies
         run: pip install requests schedule
 
       - name: Run the script
         run: python main.py
         
-      - name: Save CSV back to GitHub
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add .
-          git commit -m "Auto update data" || echo "No changes to commit"
-          git push
-          
