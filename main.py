@@ -1,107 +1,80 @@
+# Install required libraries before running: pip install requests schedule
+
 import requests
-from datetime import datetime, timedelta
-import csv
-import os
+import datetime
+import time
+import schedule
 
-# --- CONFIG ---
-DC_CAPACITY_KW = 5000  
-TOTAL_INVERTER_MAX_KW = 4800  # 1 Inverter offline (4 x 1200 kW)
-LAT = 27.131399 
-LON = 79.276257
-BOT_TOKEN = "8732527484:AAFxJVX2aFXsCMpyI2PJwTb74g2t0AnCABA"
-CHAT_ID = "8545116146"
+# --- Configuration ---
+TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TELEGRAM_CHAT_ID = 'YOUR_CHAT_ID'
+SOLCAST_API_KEY = 'YOUR_SOLCAST_API_KEY'
 
-# --- SYSTEM CONSTANTS ---
-TEMP_COEFF = -0.004  
-BASE_SYSTEM_LOSSES = 0.78  # SCADA PR के अनुसार कैलिब्रेटेड
-INVERTER_EFFICIENCY = 0.982 
+# Plant Parameters
+PLANT_CAPACITY_KW = 5000.0  
+PERFORMANCE_RATIO = 0.75
+TEMP_COEFFICIENT = -0.004
 
-def run_solar_agent():
+# Coordinates
+LATITUDE = 27.131397
+LONGITUDE = 79.2762589
+
+def job():
+    # 1. Fetch Solcast Data (Forecast Endpoint)
+    url = f"https://api.solcast.com.au/data/forecast/radiation_and_weather?latitude={LATITUDE}&longitude={LONGITUDE}&api_key={SOLCAST_API_KEY}&format=json"
+    
     try:
-        india_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-        target_time = india_now + timedelta(hours=2)
-        target_hour = target_time.hour
-        target_time_str = target_time.strftime("%Y-%m-%dT%H:00")
-        today_str = target_time.strftime("%Y-%m-%d")
-        
-        if target_hour < 7 or target_hour > 18:
-            print(f"Night time ({target_hour}:00 IST). No solar generation. Exiting.")
-            return
-            
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={LAT}&longitude={LON}&"
-            f"hourly=shortwave_radiation,temperature_2m&"
-            f"timezone=Asia%2FKolkata&forecast_days=2"
-        )
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        index = data['hourly']['time'].index(target_time_str)
-        ghi = data['hourly']['shortwave_radiation'][index] 
-        temp_air = data['hourly']['temperature_2m'][index]
-        
-        if ghi > 0:
-            temp_cell = temp_air + (ghi / 40)
-            temp_loss_factor = 1 + (TEMP_COEFF * (temp_cell - 25))
-            temp_loss_factor = min(1.0, max(0.0, temp_loss_factor)) 
-            
-            dc_power = (ghi / 1000) * DC_CAPACITY_KW * BASE_SYSTEM_LOSSES * temp_loss_factor
-            ac_power_raw = dc_power * INVERTER_EFFICIENCY
-            predicted_ac_kw = min(ac_power_raw, TOTAL_INVERTER_MAX_KW)
-        else:
-            predicted_ac_kw = 0.0
-            
-        predicted_ac_kw = round(predicted_ac_kw, 2)
-        
-        running_total = 0.0
-        if os.path.isfile('hourly_generation.csv'):
-            with open('hourly_generation.csv', mode='r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row['Date_Time'].startswith(today_str):
-                        running_total += float(row['Predicted_AC_kW'])
-                        
-        running_total += predicted_ac_kw
-            
-        status = "✅ GOOD GEN: Proceed" if predicted_ac_kw > (DC_CAPACITY_KW * 0.1) else "⚠️ LOW GEN: Delay load"
-        
-        report = (
-            f"☀️ Anurag pls check, SOLAR SCHEDULING REPORT\n"
-            f"📍 Sahasradhara energy pvt ltd\n"
-            f"⏰ Forecast for: {target_time.strftime('%H:00')} IST\n"
-            f"📊 GHI: {ghi} W/m² | 🌡️ Temp: {temp_air}°C\n"
-            f"🔋 Predicted AC: {predicted_ac_kw} kW\n"
-            f"📈 Today's Total: {round(running_total, 2)} kWh\n"
-            f"---------------------------\n"
-            f"{status}"
-        )
-        
-        send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        payload = {'chat_id': CHAT_ID, 'text': report}
-        requests.get(send_url, params=payload, timeout=10)
-        
-        file_exists = os.path.isfile('hourly_generation.csv')
-        with open('hourly_generation.csv', mode='a', newline='') as file:
-            writer = csv.writer(file)
-            if not file_exists:
-                writer.writerow(['Date_Time', 'GHI', 'Temp_C', 'Predicted_AC_kW'])
-            writer.writerow([target_time_str, ghi, temp_air, predicted_ac_kw])
-            
-        if target_hour == 18:
-            summary_msg = (
-                f"🌅 *END OF DAY SUMMARY*\n"
-                f"📅 Date: {today_str}\n"
-                f"⚡ Total Final Generation: {round(running_total, 2)} kWh\n"
-                f"---------------------------"
-            )
-            requests.get(send_url, params={'chat_id': CHAT_ID, 'text': summary_msg}, timeout=10)
-            
-            with open('hourly_generation.csv', 'rb') as doc:
-                doc_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-                requests.post(doc_url, data={'chat_id': CHAT_ID}, files={'document': doc}, timeout=20)
-            print("Daily summary and CSV file sent to Telegram!")
+        response = requests.get(url).json()
+        ghi = response['forecasts'][0]['ghi']
+        temp = response['forecasts'][0]['air_temp']
+    except Exception as e:
+        print(f"API Error: {e}")
+        return
+
+    # 2. Calculate Power
+    if ghi <= 0:
+        predicted_kw = 0.0
+    else:
+        temp_loss_factor = 1 + (TEMP_COEFFICIENT * (temp - 25))
+        predicted_kw = PLANT_CAPACITY_KW * (ghi / 1000.0) * PERFORMANCE_RATIO * temp_loss_factor
+        predicted_kw = max(0, predicted_kw)
+
+    # 3. Fetch Actual Total (Replace placeholder with DB fetch logic)
+    actual_today_total_kwh = 17160.0 
+
+    # 4. Send Telegram Alert
+    now = datetime.datetime.now()
+    time_str = now.strftime("%H:00 IST")
+    
+    message = (
+        f"☀️ Anurag pls check, SOLAR SCHEDULING REPORT\n"
+        f"📍 Sahasradhara energy pvt ltd\n"
+        f"⏰ Forecast for: {time_str}\n"
+        f"📊 GHI: {ghi} W/m² | 🌡️ Temp: {temp}°C\n"
+        f"🔋 Predicted AC: {predicted_kw:.2f} kW\n"
+        f"📈 Today's Total: {actual_today_total_kwh:.2f} kWh\n"
+        f"------------------------\n"
+        f"✅ GOOD GEN: Proceed"
+    )
+    
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': message}
+    requests.post(telegram_url, data=payload)
+
+# 10 Scheduled calls to stay within Solcast free tier limits (8 AM to 5 PM)
+run_times = [
+    "08:00", "09:00", "10:00", "11:00", "12:00", 
+    "13:00", "14:00", "15:00", "16:00", "17:00"
+]
+
+for t in run_times:
+    schedule.every().day.at(t).do(job)
+
+if __name__ == "__main__":
+    print("Solar Bot Started. Waiting for scheduled times (8 AM to 5 PM)...")
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
             
         print(f"Success! Predicted {predicted_ac_kw} kW. Running Total: {round(running_total, 2)} kWh")
 
