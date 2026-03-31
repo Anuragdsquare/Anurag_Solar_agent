@@ -48,7 +48,7 @@ def run_solar_agent():
     try:
         # 1. Setup Time (IST)
         india_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-        if india_now.hour < 7 or india_now.hour > 18:
+        if india_now.hour < 6 or india_now.hour > 18:
             print("Outside sunlight hours.")
             return
 
